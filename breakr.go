@@ -3,12 +3,15 @@ package breakr
 import (
 	"github.com/genov8/breakr/internal"
 	"sync"
+	"time"
 )
 
 type Breaker struct {
-	mu     sync.Mutex
-	state  internal.State
-	config Config
+	mu              sync.Mutex
+	state           internal.State
+	config          Config
+	failures        int
+	lastFailureTime time.Time
 }
 
 func New(config Config) *Breaker {
@@ -26,10 +29,16 @@ func (b *Breaker) State() internal.State {
 
 func (b *Breaker) Execute(fn func() (interface{}, error)) (interface{}, error) {
 	b.mu.Lock()
+
 	if b.state == internal.Open {
-		b.mu.Unlock()
-		return nil, ErrCircuitOpen
+		if time.Since(b.lastFailureTime) > b.config.ResetTimeout {
+			b.state = internal.HalfOpen
+		} else {
+			b.mu.Unlock()
+			return nil, ErrCircuitOpen
+		}
 	}
+
 	b.mu.Unlock()
 
 	result, err := fn()
@@ -38,10 +47,20 @@ func (b *Breaker) Execute(fn func() (interface{}, error)) (interface{}, error) {
 	defer b.mu.Unlock()
 
 	if err != nil {
-		b.state = internal.Open
+		b.failures++
+		b.lastFailureTime = time.Now()
+
+		if b.failures >= b.config.FailureThreshold {
+			b.state = internal.Open
+		}
 		return nil, err
 	}
 
-	b.state = internal.Closed
+	b.reset()
 	return result, nil
+}
+
+func (b *Breaker) reset() {
+	b.failures = 0
+	b.state = internal.Closed
 }
