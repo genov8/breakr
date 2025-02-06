@@ -1,6 +1,7 @@
 package breakr
 
 import (
+	"errors"
 	"github.com/genov8/breakr/internal"
 	"sync"
 	"time"
@@ -41,12 +42,28 @@ func (b *Breaker) Execute(fn func() (interface{}, error)) (interface{}, error) {
 
 	b.mu.Unlock()
 
-	result, err := fn()
+	resultChan := make(chan interface{}, 1)
+	errChan := make(chan error, 1)
 
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	go func() {
+		result, err := fn()
+		if err != nil {
+			errChan <- err
+		} else {
+			resultChan <- result
+		}
+	}()
 
-	if err != nil {
+	select {
+	case result := <-resultChan:
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		b.reset()
+		return result, nil
+
+	case err := <-errChan:
+		b.mu.Lock()
+		defer b.mu.Unlock()
 		b.failures++
 		b.lastFailureTime = time.Now()
 
@@ -54,10 +71,18 @@ func (b *Breaker) Execute(fn func() (interface{}, error)) (interface{}, error) {
 			b.state = internal.Open
 		}
 		return nil, err
-	}
 
-	b.reset()
-	return result, nil
+	case <-time.After(b.config.ExecutionTimeout):
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		b.failures++
+		b.lastFailureTime = time.Now()
+
+		if b.failures >= b.config.FailureThreshold {
+			b.state = internal.Open
+		}
+		return nil, errors.New("execution timed out")
+	}
 }
 
 func (b *Breaker) reset() {
