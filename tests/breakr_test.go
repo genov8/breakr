@@ -11,6 +11,7 @@ func TestCircuitBreaker(t *testing.T) {
 	cb := breakr.New(breakr.Config{
 		FailureThreshold: 2,
 		ResetTimeout:     time.Second,
+		ExecutionTimeout: 500 * time.Millisecond,
 	})
 
 	failFn := func() (interface{}, error) {
@@ -37,5 +38,16 @@ func TestCircuitBreaker(t *testing.T) {
 
 	if cb.State().String() != "Closed" {
 		t.Errorf("expected state to be Closed, got %s", cb.State().String())
+	}
+
+	slowFn := func() (interface{}, error) {
+		time.Sleep(700 * time.Millisecond)
+		return "success", nil
+	}
+
+	_, err = cb.Execute(slowFn)
+
+	if err == nil || err.Error() != "execution timed out" {
+		t.Errorf("expected execution timeout error, got %v", err)
 	}
 }
