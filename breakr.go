@@ -34,6 +34,7 @@ func (b *Breaker) Execute(fn func() (interface{}, error)) (interface{}, error) {
 	if b.state == internal.Open {
 		if time.Since(b.lastFailureTime) > b.config.ResetTimeout {
 			b.state = internal.HalfOpen
+			b.failures = 0
 		} else {
 			b.mu.Unlock()
 			return nil, ErrCircuitOpen
@@ -67,9 +68,17 @@ func (b *Breaker) Execute(fn func() (interface{}, error)) (interface{}, error) {
 		b.failures++
 		b.lastFailureTime = time.Now()
 
+		if b.state == internal.HalfOpen {
+			b.state = internal.Open
+			b.startResetTimer()
+			return nil, err
+		}
+
 		if b.failures >= b.config.FailureThreshold {
 			b.state = internal.Open
+			b.startResetTimer()
 		}
+
 		return nil, err
 
 	case <-time.After(b.config.ExecutionTimeout):
@@ -78,9 +87,17 @@ func (b *Breaker) Execute(fn func() (interface{}, error)) (interface{}, error) {
 		b.failures++
 		b.lastFailureTime = time.Now()
 
+		if b.state == internal.HalfOpen {
+			b.state = internal.Open
+			b.startResetTimer()
+			return nil, errors.New("execution timed out")
+		}
+
 		if b.failures >= b.config.FailureThreshold {
 			b.state = internal.Open
+			b.startResetTimer()
 		}
+
 		return nil, errors.New("execution timed out")
 	}
 }
@@ -88,4 +105,17 @@ func (b *Breaker) Execute(fn func() (interface{}, error)) (interface{}, error) {
 func (b *Breaker) reset() {
 	b.failures = 0
 	b.state = internal.Closed
+}
+
+func (b *Breaker) startResetTimer() {
+	go func() {
+		time.Sleep(b.config.ResetTimeout)
+		b.mu.Lock()
+		defer b.mu.Unlock()
+
+		if b.state == internal.Open {
+			b.state = internal.HalfOpen
+			b.failures = 0
+		}
+	}()
 }
