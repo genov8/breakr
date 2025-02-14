@@ -52,8 +52,12 @@ func main() {
 | FailureThreshold | Number of consecutive failures before CB enters Open state.|
 | ResetTimeout | Time before CB moves to Half-Open. |
 | ExecutionTimeout | Maximum execution time for a protected function. |
+| FailureCodes | List of HTTP status codes considered failures (e.g., `[500, 502, 503]`). **If omitted, all errors trigger the breaker.** |
 
-## 🌐 Example with HTTP Requests
+### 🌐 Example 1: Circuit Breaker with HTTP Requests
+
+This example demonstrates how `Breakr` can handle **unstable HTTP requests**.  
+The circuit breaker will **trip after 3 failed requests** and block further requests until `ResetTimeout` expires.
 
 ```go
 package main
@@ -117,8 +121,108 @@ func main() {
 	}
 }
 ```
-## 📜 Circuit Breaker States
+### ⚡ Example 2: Filtering Specific Failure Codes
+This example shows how to configure Breakr to only react to certain HTTP error codes (500, 502, 503) while ignoring others like 404.
+```go
+package main
 
+import (
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/genov8/breakr"
+)
+
+// APIError — custom error type with an HTTP status code
+type APIError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e *APIError) Error() string {
+	return e.Message
+}
+
+func (e *APIError) Code() int {
+	return e.StatusCode
+}
+
+func main() {
+	// Create a Circuit Breaker with FailureCodes support
+	cb := breakr.New(breakr.Config{
+		FailureThreshold: 3,
+		ResetTimeout:     5 * time.Second,
+		ExecutionTimeout: 2 * time.Second,
+		FailureCodes:     []int{500, 502, 503}, // Reacts only to these error codes
+	})
+
+	// API call returning 500 (critical failure)
+	fail500 := func() (interface{}, error) {
+		return nil, &APIError{StatusCode: 500, Message: "Internal Server Error"}
+	}
+
+	// API call returning 404 (ignored error)
+	fail404 := func() (interface{}, error) {
+		return nil, &APIError{StatusCode: 404, Message: "Not Found"} // Ignored
+	}
+
+	// Successful API call
+	success := func() (interface{}, error) {
+		return "Success", nil
+	}
+
+	// Simulating requests
+	for i := 1; i <= 5; i++ {
+		result, err := cb.Execute(fail404)
+		if err != nil {
+			fmt.Printf("[Request %d] Ignored Error: %v\n", i, err)
+		} else {
+			fmt.Printf("[Request %d] Success: %v\n", i, result)
+		}
+	}
+
+	for i := 6; i <= 10; i++ {
+		result, err := cb.Execute(fail500)
+		if err != nil {
+			fmt.Printf("[Request %d] Failure: %v\n", i, err)
+		} else {
+			fmt.Printf("[Request %d] Success: %v\n", i, result)
+		}
+	}
+
+	// Circuit Breaker should now be in Open state
+	for i := 11; i <= 13; i++ {
+		result, err := cb.Execute(fail500)
+		if err != nil {
+			fmt.Printf("[Request %d] Circuit Breaker blocked: %v\n", i, err)
+		} else {
+			fmt.Printf("[Request %d] Success: %v\n", i, result)
+		}
+	}
+
+	// Waiting for ResetTimeout
+	fmt.Println("⏳ Waiting for ResetTimeout...")
+	time.Sleep(6 * time.Second)
+
+	// Checking Half-Open state, should allow a successful request
+	result, err := cb.Execute(success)
+	if err != nil {
+		fmt.Printf("[Request 14] Failure: %v\n", err)
+	} else {
+		fmt.Printf("[Request 14] Success: %v\n", result)
+	}
+
+	// Should fully recover after success
+	result, err = cb.Execute(success)
+	if err != nil {
+		fmt.Printf("[Request 15] Failure: %v\n", err)
+	} else {
+		fmt.Printf("[Request 15] Success: %v\n", result)
+	}
+}
+```
+## 📜 Circuit Breaker States
 
 - Closed → Everything works fine, requests are allowed.
 - Open → Requests are blocked after reaching the failure threshold.
@@ -136,3 +240,4 @@ func main() {
 - [x] Limits retries to avoid overloading a failing service
 - [x] Fast & lightweight
 - [x] Supports execution timeouts
+- [x] Allows filtering which errors trigger the breaker (`FailureCodes`)
