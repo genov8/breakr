@@ -65,6 +65,11 @@ func (b *Breaker) Execute(fn func() (interface{}, error)) (interface{}, error) {
 	case err := <-errChan:
 		b.mu.Lock()
 		defer b.mu.Unlock()
+
+		if !b.isFailure(err) {
+			return nil, err
+		}
+
 		b.failures++
 		b.lastFailureTime = time.Now()
 
@@ -84,6 +89,7 @@ func (b *Breaker) Execute(fn func() (interface{}, error)) (interface{}, error) {
 	case <-time.After(b.config.ExecutionTimeout):
 		b.mu.Lock()
 		defer b.mu.Unlock()
+
 		b.failures++
 		b.lastFailureTime = time.Now()
 
@@ -118,4 +124,26 @@ func (b *Breaker) startResetTimer() {
 			b.failures = 0
 		}
 	}()
+}
+
+func (b *Breaker) isFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if len(b.config.FailureCodes) == 0 {
+		return true
+	}
+
+	var httpErr interface{ Code() int }
+	if errors.As(err, &httpErr) {
+		for _, code := range b.config.FailureCodes {
+			if httpErr.Code() == code {
+				return true
+			}
+		}
+		return false
+	}
+
+	return true
 }
