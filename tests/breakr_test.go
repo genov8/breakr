@@ -9,6 +9,19 @@ import (
 	"time"
 )
 
+type httpError struct {
+	code int
+	msg  string
+}
+
+func (e *httpError) Error() string {
+	return e.msg
+}
+
+func (e *httpError) Code() int {
+	return e.code
+}
+
 func TestCircuitBreaker(t *testing.T) {
 	cb := breakr.New(breakr.Config{
 		FailureThreshold: 2,
@@ -99,5 +112,36 @@ func TestCircuitBreakerConcurrency(t *testing.T) {
 
 	if cb.State() != internal.Closed {
 		t.Errorf("expected Circuit Breaker to be Closed, got %v", cb.State())
+	}
+}
+
+func TestFailureCodes(t *testing.T) {
+	cb := breakr.New(breakr.Config{
+		FailureThreshold: 3,
+		ResetTimeout:     5 * time.Second,
+		FailureCodes:     []int{500, 502, 503, 504},
+	})
+
+	fail500 := func() (interface{}, error) {
+		return nil, &httpError{code: 500, msg: "Internal Server Error"}
+	}
+
+	fail404 := func() (interface{}, error) {
+		return nil, &httpError{code: 404, msg: "Not Found"}
+	}
+
+	cb.Execute(fail404)
+	cb.Execute(fail404)
+
+	if cb.State().String() != "Closed" {
+		t.Errorf("expected Circuit Breaker to be Closed, but got %s", cb.State().String())
+	}
+
+	cb.Execute(fail500)
+	cb.Execute(fail500)
+	cb.Execute(fail500)
+
+	if cb.State().String() != "Open" {
+		t.Errorf("expected Circuit Breaker to be Open, but got %s", cb.State().String())
 	}
 }
