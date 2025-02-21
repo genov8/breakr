@@ -3,6 +3,7 @@ package tests
 import (
 	"errors"
 	"github.com/genov8/breakr"
+	"github.com/genov8/breakr/config"
 	"github.com/genov8/breakr/internal"
 	"sync"
 	"testing"
@@ -23,7 +24,7 @@ func (e *httpError) Code() int {
 }
 
 func TestCircuitBreaker(t *testing.T) {
-	cb := breakr.New(breakr.Config{
+	cb := breakr.New(config.Config{
 		FailureThreshold: 2,
 		ResetTimeout:     time.Second,
 		ExecutionTimeout: 500 * time.Millisecond,
@@ -68,7 +69,7 @@ func TestCircuitBreaker(t *testing.T) {
 }
 
 func TestCircuitBreakerConcurrency(t *testing.T) {
-	cb := breakr.New(breakr.Config{
+	cb := breakr.New(config.Config{
 		FailureThreshold: 3,
 		ResetTimeout:     time.Second,
 		ExecutionTimeout: 500 * time.Millisecond,
@@ -116,7 +117,7 @@ func TestCircuitBreakerConcurrency(t *testing.T) {
 }
 
 func TestFailureCodes(t *testing.T) {
-	cb := breakr.New(breakr.Config{
+	cb := breakr.New(config.Config{
 		FailureThreshold: 3,
 		ResetTimeout:     5 * time.Second,
 		FailureCodes:     []int{500, 502, 503, 504},
