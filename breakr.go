@@ -2,6 +2,7 @@ package breakr
 
 import (
 	"errors"
+	"github.com/genov8/breakr/config"
 	"github.com/genov8/breakr/internal"
 	"sync"
 	"time"
@@ -10,15 +11,15 @@ import (
 type Breaker struct {
 	mu              sync.Mutex
 	state           internal.State
-	config          Config
+	config          config.Config
 	failures        int
 	lastFailureTime time.Time
 }
 
-func New(config Config) *Breaker {
+func New(cfg config.Config) *Breaker {
 	return &Breaker{
 		state:  internal.Closed,
-		config: config,
+		config: cfg,
 	}
 }
 

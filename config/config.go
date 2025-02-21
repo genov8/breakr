@@ -1,4 +1,4 @@
-package breakr
+package config
 
 import "time"
 
