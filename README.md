@@ -54,6 +54,44 @@ func main() {
 | ExecutionTimeout | Maximum execution time for a protected function. |
 | FailureCodes | List of HTTP status codes considered failures (e.g., `[500, 502, 503]`). **If omitted, all errors trigger the breaker.** |
 
+You can configure breakr using JSON or YAML instead of manual setup.
+
+#### 📝 JSON Example
+```json
+{
+  "failure_threshold": 3,
+  "reset_timeout": "5s",
+  "execution_timeout": "2s",
+  "window_size": "10s",
+  "failure_codes": [500, 502, 503]
+}
+```
+```go
+config, err := config.LoadConfigJSON("config.json")
+if err != nil {
+    log.Fatalf("Error loading config: %v", err)
+}
+cb := breakr.New(*config)
+```
+#### 📝 YAML Example
+```yaml
+failure_threshold: 3
+reset_timeout: "5s"
+execution_timeout: "2s"
+window_size: "10s"
+failure_codes:
+  - 500
+  - 502
+  - 503
+```
+```go
+config, err := config.LoadConfigYAML("config.yaml")
+if err != nil {
+    log.Fatalf("Error loading config: %v", err)
+}
+cb := breakr.New(*config)
+```
+
 ### 🌐 Example 1: Circuit Breaker with HTTP Requests
 
 This example demonstrates how `Breakr` can handle **unstable HTTP requests**.  
@@ -241,3 +279,4 @@ func main() {
 - [x] Fast & lightweight
 - [x] Supports execution timeouts
 - [x] Allows filtering which errors trigger the breaker (`FailureCodes`)
+- [x] JSON & YAML configuration support
