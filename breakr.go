@@ -2,6 +2,7 @@ package breakr
 
 import (
 	"errors"
+	"fmt"
 	"github.com/genov8/breakr/config"
 	"github.com/genov8/breakr/internal"
 	"sync"
@@ -12,11 +13,15 @@ type Breaker struct {
 	mu              sync.Mutex
 	state           internal.State
 	config          config.Config
-	failures        int
+	failures        []time.Time
 	lastFailureTime time.Time
 }
 
 func New(cfg config.Config) *Breaker {
+	if err := cfg.Validate(); err != nil {
+		panic(fmt.Sprintf("invalid config: %v", err))
+	}
+
 	return &Breaker{
 		state:  internal.Closed,
 		config: cfg,
@@ -35,7 +40,7 @@ func (b *Breaker) Execute(fn func() (interface{}, error)) (interface{}, error) {
 	if b.state == internal.Open {
 		if time.Since(b.lastFailureTime) > b.config.ResetTimeout {
 			b.state = internal.HalfOpen
-			b.failures = 0
+			b.cleanUpFailures()
 		} else {
 			b.mu.Unlock()
 			return nil, ErrCircuitOpen
@@ -71,7 +76,9 @@ func (b *Breaker) Execute(fn func() (interface{}, error)) (interface{}, error) {
 			return nil, err
 		}
 
-		b.failures++
+		b.cleanUpFailures()
+		now := time.Now()
+		b.failures = append(b.failures, now)
 		b.lastFailureTime = time.Now()
 
 		if b.state == internal.HalfOpen {
@@ -80,7 +87,7 @@ func (b *Breaker) Execute(fn func() (interface{}, error)) (interface{}, error) {
 			return nil, err
 		}
 
-		if b.failures >= b.config.FailureThreshold {
+		if b.shouldTrip() {
 			b.state = internal.Open
 			b.startResetTimer()
 		}
@@ -91,7 +98,9 @@ func (b *Breaker) Execute(fn func() (interface{}, error)) (interface{}, error) {
 		b.mu.Lock()
 		defer b.mu.Unlock()
 
-		b.failures++
+		b.cleanUpFailures()
+		now := time.Now()
+		b.failures = append(b.failures, now)
 		b.lastFailureTime = time.Now()
 
 		if b.state == internal.HalfOpen {
@@ -100,7 +109,7 @@ func (b *Breaker) Execute(fn func() (interface{}, error)) (interface{}, error) {
 			return nil, errors.New("execution timed out")
 		}
 
-		if b.failures >= b.config.FailureThreshold {
+		if b.shouldTrip() {
 			b.state = internal.Open
 			b.startResetTimer()
 		}
@@ -110,7 +119,7 @@ func (b *Breaker) Execute(fn func() (interface{}, error)) (interface{}, error) {
 }
 
 func (b *Breaker) reset() {
-	b.failures = 0
+	b.failures = []time.Time{}
 	b.state = internal.Closed
 }
 
@@ -122,7 +131,7 @@ func (b *Breaker) startResetTimer() {
 
 		if b.state == internal.Open {
 			b.state = internal.HalfOpen
-			b.failures = 0
+			b.cleanUpFailures()
 		}
 	}()
 }
@@ -147,4 +156,35 @@ func (b *Breaker) isFailure(err error) bool {
 	}
 
 	return true
+}
+
+func (b *Breaker) cleanUpFailures() {
+	if b.config.WindowSize == 0 {
+		return
+	}
+
+	cutoff := time.Now().Add(-b.config.WindowSize)
+	newFailures := make([]time.Time, 0, len(b.failures))
+
+	for _, ts := range b.failures {
+		if ts.After(cutoff) {
+			newFailures = append(newFailures, ts)
+		}
+	}
+
+	b.failures = newFailures
+}
+
+func (b *Breaker) shouldTrip() bool {
+	if b.config.WindowSize > 0 {
+		cutoff := time.Now().Add(-b.config.WindowSize)
+		count := 0
+		for _, ts := range b.failures {
+			if ts.After(cutoff) {
+				count++
+			}
+		}
+		return count >= b.config.FailureThreshold
+	}
+	return len(b.failures) >= b.config.FailureThreshold
 }
