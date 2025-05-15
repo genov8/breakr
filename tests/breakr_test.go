@@ -146,3 +146,56 @@ func TestFailureCodes(t *testing.T) {
 		t.Errorf("expected Circuit Breaker to be Open, but got %s", cb.State().String())
 	}
 }
+
+func TestWindowSize(t *testing.T) {
+	cb := breakr.New(config.Config{
+		FailureThreshold: 2,
+		ResetTimeout:     time.Second,
+		ExecutionTimeout: 500 * time.Millisecond,
+		WindowSize:       2 * time.Second,
+	})
+
+	failFn := func() (interface{}, error) {
+		return nil, errors.New("error")
+	}
+
+	successFn := func() (interface{}, error) {
+		return "success", nil
+	}
+
+	_, _ = cb.Execute(failFn)
+	time.Sleep(2 * time.Second)
+	_, _ = cb.Execute(failFn)
+
+	if cb.State().String() != "Closed" {
+		t.Errorf("expected state to be Closed after first valid failure, got %s", cb.State().String())
+	}
+
+	_, _ = cb.Execute(failFn)
+
+	if cb.State().String() != "Open" {
+		t.Errorf("expected state to be Open after 2 failures in window, got %s", cb.State().String())
+	}
+
+	time.Sleep(1100 * time.Millisecond)
+
+	_, err := cb.Execute(successFn)
+	if err != nil {
+		t.Errorf("expected success, got error: %v", err)
+	}
+
+	if cb.State().String() != "Closed" {
+		t.Errorf("expected state to be Closed, got %s", cb.State().String())
+	}
+
+	slowFn := func() (interface{}, error) {
+		time.Sleep(700 * time.Millisecond)
+		return "success", nil
+	}
+
+	_, err = cb.Execute(slowFn)
+
+	if err == nil || err.Error() != "execution timed out" {
+		t.Errorf("expected execution timeout error, got %v", err)
+	}
+}
