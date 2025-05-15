@@ -52,6 +52,7 @@ func main() {
 | FailureThreshold | Number of consecutive failures before CB enters Open state.|
 | ResetTimeout | Time before CB moves to Half-Open. |
 | ExecutionTimeout | Maximum execution time for a protected function. |
+| WindowSize | Duration of sliding time window (e.g., `2s`). Only failures within this window are counted toward the threshold. Use `0` to disable. |
 | FailureCodes | List of HTTP status codes considered failures (e.g., `[500, 502, 503]`). **If omitted, all errors trigger the breaker.** |
 
 You can configure breakr using JSON or YAML instead of manual setup.
@@ -260,6 +261,75 @@ func main() {
 	}
 }
 ```
+### 🌐 Example 3: Sliding window
+This example demonstrates how Breakr uses a sliding time window to only consider recent failures toward the threshold.
+```go
+package main
+
+import (
+	"fmt"
+	"github.com/genov8/breakr"
+	"github.com/genov8/breakr/config"
+	"time"
+)
+
+type APIError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e *APIError) Error() string {
+	return e.Message
+}
+
+func (e *APIError) Code() int {
+	return e.StatusCode
+}
+
+func main() {
+	cb := breakr.New(config.Config{
+		FailureThreshold: 2,
+		ResetTimeout:     3 * time.Second,
+		ExecutionTimeout: 1 * time.Second,
+		WindowSize:       2 * time.Second,
+		FailureCodes:     []int{500},
+	})
+
+	fail := func() (interface{}, error) {
+		return nil, &APIError{StatusCode: 500, Message: "Internal Server Error"}
+	}
+
+	success := func() (interface{}, error) {
+		return "OK", nil
+	}
+
+	_ = success
+
+	cb.Execute(fail)
+	fmt.Println("[1] First failure")
+
+	time.Sleep(3 * time.Second)
+
+	cb.Execute(fail)
+	fmt.Println("[2] Second failure (alone in window)")
+
+	fmt.Printf("[2] State: %s\n", cb.State())
+
+	cb.Execute(fail)
+	fmt.Println("[3] Third failure — should trip breaker")
+
+	fmt.Printf("[3] State: %s\n", cb.State())
+
+	// Output:
+	// [1] First failure
+	// [2] Second failure (alone in window)
+	// [2] State: Closed
+	// [3] Third failure — should trip breaker
+	// [3] State: Open
+}
+
+```
+
 ## 📜 Circuit Breaker States
 
 - Closed → Everything works fine, requests are allowed.
@@ -280,3 +350,4 @@ func main() {
 - [x] Supports execution timeouts
 - [x] Allows filtering which errors trigger the breaker (`FailureCodes`)
 - [x] JSON & YAML configuration support
+- [x] Sliding window strategy — count only recent failures in a time window
