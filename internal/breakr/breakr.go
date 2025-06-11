@@ -4,14 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"github.com/genov8/breakr/config"
-	"github.com/genov8/breakr/internal"
+	"github.com/genov8/breakr/internal/breakr"
 	"sync"
 	"time"
 )
 
 type Breaker struct {
 	mu              sync.Mutex
-	state           internal.State
+	state           breakr.State
 	config          config.Config
 	failures        []time.Time
 	lastFailureTime time.Time
@@ -23,12 +23,12 @@ func New(cfg config.Config) *Breaker {
 	}
 
 	return &Breaker{
-		state:  internal.Closed,
+		state:  breakr.Closed,
 		config: cfg,
 	}
 }
 
-func (b *Breaker) State() internal.State {
+func (b *Breaker) State() breakr.State {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.state
@@ -37,13 +37,13 @@ func (b *Breaker) State() internal.State {
 func (b *Breaker) Execute(fn func() (interface{}, error)) (interface{}, error) {
 	b.mu.Lock()
 
-	if b.state == internal.Open {
+	if b.state == breakr.Open {
 		if time.Since(b.lastFailureTime) > b.config.ResetTimeout {
-			b.state = internal.HalfOpen
+			b.state = breakr.HalfOpen
 			b.cleanUpFailures()
 		} else {
 			b.mu.Unlock()
-			return nil, ErrCircuitOpen
+			return nil, breakr.ErrCircuitOpen
 		}
 	}
 
@@ -81,14 +81,14 @@ func (b *Breaker) Execute(fn func() (interface{}, error)) (interface{}, error) {
 		b.failures = append(b.failures, now)
 		b.lastFailureTime = time.Now()
 
-		if b.state == internal.HalfOpen {
-			b.state = internal.Open
+		if b.state == breakr.HalfOpen {
+			b.state = breakr.Open
 			b.startResetTimer()
 			return nil, err
 		}
 
 		if b.shouldTrip() {
-			b.state = internal.Open
+			b.state = breakr.Open
 			b.startResetTimer()
 		}
 
@@ -103,14 +103,14 @@ func (b *Breaker) Execute(fn func() (interface{}, error)) (interface{}, error) {
 		b.failures = append(b.failures, now)
 		b.lastFailureTime = time.Now()
 
-		if b.state == internal.HalfOpen {
-			b.state = internal.Open
+		if b.state == breakr.HalfOpen {
+			b.state = breakr.Open
 			b.startResetTimer()
 			return nil, errors.New("execution timed out")
 		}
 
 		if b.shouldTrip() {
-			b.state = internal.Open
+			b.state = breakr.Open
 			b.startResetTimer()
 		}
 
@@ -120,7 +120,7 @@ func (b *Breaker) Execute(fn func() (interface{}, error)) (interface{}, error) {
 
 func (b *Breaker) reset() {
 	b.failures = []time.Time{}
-	b.state = internal.Closed
+	b.state = breakr.Closed
 }
 
 func (b *Breaker) startResetTimer() {
@@ -129,8 +129,8 @@ func (b *Breaker) startResetTimer() {
 		b.mu.Lock()
 		defer b.mu.Unlock()
 
-		if b.state == internal.Open {
-			b.state = internal.HalfOpen
+		if b.state == breakr.Open {
+			b.state = breakr.HalfOpen
 			b.cleanUpFailures()
 		}
 	}()
