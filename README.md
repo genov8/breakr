@@ -329,6 +329,28 @@ func main() {
 }
 
 ```
+### 🧪 Example 4: Execute with context
+This example shows how to use `ExecuteCtx` to control execution timeout via `context.Context`.
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+defer cancel()
+
+result, err := cb.ExecuteCtx(ctx, func(ctx context.Context) (interface{}, error) {
+    select {
+    case <-time.After(1 * time.Second):
+        return "done", nil
+    case <-ctx.Done():
+        return nil, ctx.Err()
+    }
+})
+
+if err != nil {
+    fmt.Printf("⛔ Request failed: %v\n", err)
+} else {
+    fmt.Printf("✅ Result: %v\n", result)
+}
+```
 
 ## 📜 Circuit Breaker States
 
@@ -351,3 +373,4 @@ func main() {
 - [x] Allows filtering which errors trigger the breaker (`FailureCodes`)
 - [x] JSON & YAML configuration support
 - [x] Sliding window strategy — count only recent failures in a time window
+- [x] Execute with `context.Context` via `ExecuteCtx`
