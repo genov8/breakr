@@ -1,17 +1,17 @@
 package breakr
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"github.com/genov8/breakr/config"
-	"github.com/genov8/breakr/internal/breakr"
 	"sync"
 	"time"
 )
 
 type Breaker struct {
 	mu              sync.Mutex
-	state           breakr.State
+	state           State
 	config          config.Config
 	failures        []time.Time
 	lastFailureTime time.Time
@@ -23,104 +23,30 @@ func New(cfg config.Config) *Breaker {
 	}
 
 	return &Breaker{
-		state:  breakr.Closed,
+		state:  Closed,
 		config: cfg,
 	}
 }
 
-func (b *Breaker) State() breakr.State {
+func (b *Breaker) State() State {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.state
 }
 
 func (b *Breaker) Execute(fn func() (interface{}, error)) (interface{}, error) {
-	b.mu.Lock()
+	return b.runWithContext(context.Background(), func(ctx context.Context) (interface{}, error) {
+		return fn()
+	})
+}
 
-	if b.state == breakr.Open {
-		if time.Since(b.lastFailureTime) > b.config.ResetTimeout {
-			b.state = breakr.HalfOpen
-			b.cleanUpFailures()
-		} else {
-			b.mu.Unlock()
-			return nil, breakr.ErrCircuitOpen
-		}
-	}
-
-	b.mu.Unlock()
-
-	resultChan := make(chan interface{}, 1)
-	errChan := make(chan error, 1)
-
-	go func() {
-		result, err := fn()
-		if err != nil {
-			errChan <- err
-		} else {
-			resultChan <- result
-		}
-	}()
-
-	select {
-	case result := <-resultChan:
-		b.mu.Lock()
-		defer b.mu.Unlock()
-		b.reset()
-		return result, nil
-
-	case err := <-errChan:
-		b.mu.Lock()
-		defer b.mu.Unlock()
-
-		if !b.isFailure(err) {
-			return nil, err
-		}
-
-		b.cleanUpFailures()
-		now := time.Now()
-		b.failures = append(b.failures, now)
-		b.lastFailureTime = time.Now()
-
-		if b.state == breakr.HalfOpen {
-			b.state = breakr.Open
-			b.startResetTimer()
-			return nil, err
-		}
-
-		if b.shouldTrip() {
-			b.state = breakr.Open
-			b.startResetTimer()
-		}
-
-		return nil, err
-
-	case <-time.After(b.config.ExecutionTimeout):
-		b.mu.Lock()
-		defer b.mu.Unlock()
-
-		b.cleanUpFailures()
-		now := time.Now()
-		b.failures = append(b.failures, now)
-		b.lastFailureTime = time.Now()
-
-		if b.state == breakr.HalfOpen {
-			b.state = breakr.Open
-			b.startResetTimer()
-			return nil, errors.New("execution timed out")
-		}
-
-		if b.shouldTrip() {
-			b.state = breakr.Open
-			b.startResetTimer()
-		}
-
-		return nil, errors.New("execution timed out")
-	}
+func (b *Breaker) ExecuteCtx(ctx context.Context, fn func(ctx context.Context) (interface{}, error)) (interface{}, error) {
+	return b.runWithContext(ctx, fn)
 }
 
 func (b *Breaker) reset() {
 	b.failures = []time.Time{}
-	b.state = breakr.Closed
+	b.state = Closed
 }
 
 func (b *Breaker) startResetTimer() {
@@ -129,8 +55,8 @@ func (b *Breaker) startResetTimer() {
 		b.mu.Lock()
 		defer b.mu.Unlock()
 
-		if b.state == breakr.Open {
-			b.state = breakr.HalfOpen
+		if b.state == Open {
+			b.state = HalfOpen
 			b.cleanUpFailures()
 		}
 	}()
