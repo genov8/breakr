@@ -1,10 +1,10 @@
 package tests
 
 import (
+	"context"
 	"errors"
-	"github.com/genov8/breakr"
 	"github.com/genov8/breakr/config"
-	"github.com/genov8/breakr/internal"
+	"github.com/genov8/breakr/internal/breakr"
 	"sync"
 	"testing"
 	"time"
@@ -63,8 +63,8 @@ func TestCircuitBreaker(t *testing.T) {
 
 	_, err = cb.Execute(slowFn)
 
-	if err == nil || err.Error() != "execution timed out" {
-		t.Errorf("expected execution timeout error, got %v", err)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("expected context deadline exceeded, got %v", err)
 	}
 }
 
@@ -92,13 +92,13 @@ func TestCircuitBreakerConcurrency(t *testing.T) {
 
 	wg.Wait()
 
-	if cb.State() != internal.Open {
+	if cb.State() != breakr.Open {
 		t.Errorf("expected Circuit Breaker to be Open, got %v", cb.State())
 	}
 
 	time.Sleep(1100 * time.Millisecond)
 
-	if cb.State() != internal.HalfOpen {
+	if cb.State() != breakr.HalfOpen {
 		t.Errorf("expected Circuit Breaker to be Half-Open, got %v", cb.State())
 	}
 
@@ -111,15 +111,16 @@ func TestCircuitBreakerConcurrency(t *testing.T) {
 		t.Errorf("expected success, got error: %v", err)
 	}
 
-	if cb.State() != internal.Closed {
+	if cb.State() != breakr.Closed {
 		t.Errorf("expected Circuit Breaker to be Closed, got %v", cb.State())
 	}
 }
 
-func TestFailureCodes(t *testing.T) {
+func TestCircuitBreakerFailureCodes(t *testing.T) {
 	cb := breakr.New(config.Config{
 		FailureThreshold: 3,
 		ResetTimeout:     5 * time.Second,
+		ExecutionTimeout: 1 * time.Second,
 		FailureCodes:     []int{500, 502, 503, 504},
 	})
 
@@ -147,7 +148,7 @@ func TestFailureCodes(t *testing.T) {
 	}
 }
 
-func TestWindowSize(t *testing.T) {
+func TestCircuitBreakerWindowSize(t *testing.T) {
 	cb := breakr.New(config.Config{
 		FailureThreshold: 2,
 		ResetTimeout:     time.Second,
@@ -195,7 +196,29 @@ func TestWindowSize(t *testing.T) {
 
 	_, err = cb.Execute(slowFn)
 
-	if err == nil || err.Error() != "execution timed out" {
-		t.Errorf("expected execution timeout error, got %v", err)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("expected context deadline exceeded, got %v", err)
+	}
+}
+
+func TestCircuitBreakerWithContext(t *testing.T) {
+	cb := breakr.New(config.Config{
+		FailureThreshold: 3,
+		ResetTimeout:     2 * time.Second,
+		ExecutionTimeout: 5 * time.Second,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	slowFn := func(ctx context.Context) (interface{}, error) {
+		time.Sleep(1 * time.Second)
+		return "ok", nil
+	}
+
+	_, err := cb.ExecuteCtx(ctx, slowFn)
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("expected context deadline exceeded, got: %v", err)
 	}
 }
