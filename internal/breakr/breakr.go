@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/genov8/breakr/config"
 	"sync"
 	"time"
+
+	"github.com/genov8/breakr/config"
+	"github.com/genov8/breakr/internal/metrics"
 )
 
 type Breaker struct {
@@ -15,6 +17,7 @@ type Breaker struct {
 	config          config.Config
 	failures        []time.Time
 	lastFailureTime time.Time
+	metrics         *metrics.Metrics
 }
 
 func New(cfg config.Config) *Breaker {
@@ -22,10 +25,17 @@ func New(cfg config.Config) *Breaker {
 		panic(fmt.Sprintf("invalid config: %v", err))
 	}
 
-	return &Breaker{
+	b := &Breaker{
 		state:  Closed,
 		config: cfg,
 	}
+
+	if cfg.Metrics != nil {
+		b.metrics = cfg.Metrics
+		b.metrics.SetState(b.state.String())
+	}
+
+	return b
 }
 
 func (b *Breaker) State() State {

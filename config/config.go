@@ -3,6 +3,8 @@ package config
 import (
 	"errors"
 	"time"
+
+	"github.com/genov8/breakr/internal/metrics"
 )
 
 type Config struct {
@@ -11,6 +13,7 @@ type Config struct {
 	ExecutionTimeout time.Duration
 	WindowSize       time.Duration
 	FailureCodes     []int
+	Metrics          *metrics.Metrics
 }
 
 func (c Config) Validate() error {
