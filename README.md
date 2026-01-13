@@ -55,6 +55,70 @@ func main() {
 | WindowSize | Duration of sliding time window (e.g., `2s`). Only failures within this window are counted toward the threshold. Use `0` to disable. |
 | FailureCodes | List of HTTP status codes considered failures (e.g., `[500, 502, 503]`). **If omitted, all errors trigger the breaker.** |
 
+## 📊 Metrics (Prometheus)
+
+`breakr` can export **Prometheus metrics** to help you observe circuit breaker behavior in production.
+
+Metrics are **optional** and enabled only if you provide a metrics instance.
+
+### Enable metrics
+
+```go
+import (
+    "github.com/genov8/breakr"
+    "github.com/genov8/breakr/config"
+    "github.com/genov8/breakr/internal/metrics"
+)
+
+m := metrics.NewMetrics("breakr")
+
+cb := breakr.New(config.Config{
+    FailureThreshold: 3,
+    ResetTimeout:     5 * time.Second,
+    ExecutionTimeout: 2 * time.Second,
+    Metrics:          m,
+})
+```
+
+### Exporting metrics endpoint
+
+`breakr` does not start an HTTP server by itself.
+
+To expose metrics, register the Prometheus handler in your application:
+
+```go
+import (
+    "net/http"
+    
+    "github.com/prometheus/client_golang/prometheus/promhttp"
+)
+
+http.Handle("/metrics", promhttp.Handler())
+http.ListenAndServe(":2112", nil)
+```
+### Exported metrics
+
+| Metric | Type | Description |
+|------|------|-------------|
+| `breakr_requests_total` | Counter | Total number of requests by status and state |
+| `breakr_execution_duration_seconds` | Histogram | Execution duration of protected calls |
+| `breakr_state` | Gauge | Current circuit breaker state |
+| `breakr_state_transitions_total` | Counter | Number of state transitions |
+
+#### Labels
+
+- `status`: `success`, `error`, `timeout`, `blocked`, `ignored_error`
+- `state`: `Closed`, `Open`, `HalfOpen`
+
+### Visualization
+
+`breakr` only exports Prometheus metrics.
+
+You can visualize them using **Grafana** or any other Prometheus-compatible monitoring tool.
+Dashboard configuration is left to the user.
+
+---
+
 You can configure breakr using JSON or YAML instead of manual setup.
 
 #### 📝 JSON Example
@@ -374,3 +438,4 @@ if err != nil {
 - [x] JSON & YAML configuration support
 - [x] Sliding window strategy — count only recent failures in a time window
 - [x] Execute with `context.Context` via `ExecuteCtx`
+- [x] Optional Prometheus metrics for observability
