@@ -3,6 +3,19 @@
 `breakr` is a lightweight, production-ready Circuit Breaker implementation for Go.  
 It helps protect your services from cascading failures and ensures high availability.
 
+## Why Breakr?
+
+Breakr is a modern, observability-first circuit breaker for Go.
+
+While many libraries focus on complex configuration, Breakr focuses on:
+
+- Simplicity
+- Production readiness
+- Built-in Prometheus integration
+- Clean and minimal API
+
+Breakr is designed for modern microservices where monitoring and observability matter.
+
 ## 📦 Installation
 
 ```sh
