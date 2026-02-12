@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/genov8/breakr/config"
-	"github.com/genov8/breakr/internal/metrics"
+	"github.com/genov8/breakr/metrics"
 )
 
 type Breaker struct {

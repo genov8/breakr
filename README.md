@@ -67,7 +67,7 @@ Metrics are **optional** and enabled only if you provide a metrics instance.
 import (
     "github.com/genov8/breakr"
     "github.com/genov8/breakr/config"
-    "github.com/genov8/breakr/internal/metrics"
+    "github.com/genov8/breakr/metrics"
 )
 
 m := metrics.NewMetrics("breakr")
