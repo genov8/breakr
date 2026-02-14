@@ -3,11 +3,12 @@ package tests
 import (
 	"context"
 	"errors"
-	"github.com/genov8/breakr/config"
-	"github.com/genov8/breakr/internal/breakr"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/genov8/breakr/config"
+	"github.com/genov8/breakr/internal/breakr"
 )
 
 type httpError struct {
@@ -86,7 +87,7 @@ func TestCircuitBreakerConcurrency(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			cb.Execute(failFn)
+			_, _ = cb.Execute(failFn)
 		}()
 	}
 
@@ -132,16 +133,16 @@ func TestCircuitBreakerFailureCodes(t *testing.T) {
 		return nil, &httpError{code: 404, msg: "Not Found"}
 	}
 
-	cb.Execute(fail404)
-	cb.Execute(fail404)
+	_, _ = cb.Execute(fail404)
+	_, _ = cb.Execute(fail404)
 
 	if cb.State().String() != "Closed" {
 		t.Errorf("expected Circuit Breaker to be Closed, but got %s", cb.State().String())
 	}
 
-	cb.Execute(fail500)
-	cb.Execute(fail500)
-	cb.Execute(fail500)
+	_, _ = cb.Execute(fail500)
+	_, _ = cb.Execute(fail500)
+	_, _ = cb.Execute(fail500)
 
 	if cb.State().String() != "Open" {
 		t.Errorf("expected Circuit Breaker to be Open, but got %s", cb.State().String())

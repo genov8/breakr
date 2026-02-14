@@ -1,10 +1,11 @@
 package config
 
 import (
-	"github.com/genov8/breakr/config"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/genov8/breakr/config"
 )
 
 func TestLoadConfigJSON(t *testing.T) {
@@ -20,12 +21,12 @@ func TestLoadConfigJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error creating temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	if _, err := tmpFile.Write([]byte(jsonData)); err != nil {
 		t.Fatalf("Error writing to temp file: %v", err)
 	}
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	conf, err := config.LoadConfigJSON(tmpFile.Name())
 	if err != nil {

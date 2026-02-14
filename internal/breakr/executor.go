@@ -7,17 +7,20 @@ import (
 
 func (b *Breaker) runWithContext(ctx context.Context, fn func(ctx context.Context) (interface{}, error)) (interface{}, error) {
 	start := time.Now()
+
 	b.mu.Lock()
+	stateAtStart := b.state
 
 	if b.state == Open {
 		if time.Since(b.lastFailureTime) > b.config.ResetTimeout {
 			b.setState(HalfOpen)
 			b.cleanUpFailures()
+			stateAtStart = HalfOpen
 		} else {
 			b.mu.Unlock()
 
 			if b.metrics != nil {
-				b.metrics.ObserveBlocked(b.state.String())
+				b.metrics.ObserveBlocked(stateAtStart.String())
 			}
 			return nil, ErrCircuitOpen
 		}
@@ -60,7 +63,7 @@ func (b *Breaker) runWithContext(ctx context.Context, fn func(ctx context.Contex
 		b.mu.Unlock()
 
 		if b.metrics != nil {
-			b.metrics.ObserveTimeout(b.state.String(), d)
+			b.metrics.ObserveTimeout(stateAtStart.String(), d)
 		}
 		return nil, ctx.Err()
 
@@ -72,7 +75,7 @@ func (b *Breaker) runWithContext(ctx context.Context, fn func(ctx context.Contex
 		b.mu.Unlock()
 
 		if b.metrics != nil {
-			b.metrics.ObserveSuccess(b.state.String(), d)
+			b.metrics.ObserveSuccess(stateAtStart.String(), d)
 		}
 
 		return result, nil
@@ -85,7 +88,7 @@ func (b *Breaker) runWithContext(ctx context.Context, fn func(ctx context.Contex
 			b.mu.Unlock()
 
 			if b.metrics != nil {
-				b.metrics.ObserveIgnored(b.state.String(), d)
+				b.metrics.ObserveIgnored(stateAtStart.String(), d)
 			}
 			return nil, err
 		}
@@ -102,9 +105,9 @@ func (b *Breaker) runWithContext(ctx context.Context, fn func(ctx context.Contex
 		b.mu.Unlock()
 
 		if b.metrics != nil {
-			b.metrics.ObserveError(b.state.String(), d)
+			b.metrics.ObserveError(stateAtStart.String(), d)
 		}
-		
+
 		return nil, err
 	}
 }
